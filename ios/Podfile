@@ -44,8 +44,9 @@ target 'Igloo' do
 
   config = use_native_modules!(config_command)
 
-  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
-  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+  # Prefer podfile_properties, fall back to ENV variable
+  use_frameworks_linkage = podfile_properties['ios.useFrameworks'] || ENV['USE_FRAMEWORKS']
+  use_frameworks! :linkage => use_frameworks_linkage.to_sym if use_frameworks_linkage
 
   use_react_native!(
     :path => config[:reactNativePath],

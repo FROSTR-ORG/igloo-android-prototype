@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Igloo iOS is a mobile app prototype for FROSTR threshold signing. It allows users to run a remote signer node on their mobile device, participating in k-of-n threshold signature schemes over nostr relays. Built with Expo/React Native using TypeScript.
+Igloo Android is a mobile app prototype for FROSTR threshold signing. It allows users to run a remote signer node on their mobile device, participating in k-of-n threshold signature schemes over nostr relays. Built with Expo/React Native using TypeScript.
+
+This repository is nearly identical to the sibling `../igloo-ios` project. The key difference is background signer keepalive:
+- iOS: soundscape/background audio
+- Android: foreground service with persistent notification
 
 **Core dependency**: All cryptographic operations are handled by `@frostr/igloo-core` and `@frostr/bifrost`. Never implement crypto logic in the app—always delegate to these libraries.
 
@@ -13,12 +17,15 @@ Igloo iOS is a mobile app prototype for FROSTR threshold signing. It allows user
 ```bash
 bun install              # Install dependencies
 bun start                # Start Expo dev server (press 'i' for iOS, 'a' for Android)
+bun run android          # Build and run on Android emulator/device (native build)
 bun run ios              # Build and run on iOS simulator (requires native build)
 bun run lint             # Run ESLint
 bun run format           # Format code with Prettier
 ```
 
-For native module changes (e.g., `modules/background-audio`), you must rebuild with `bun run ios`.
+For native module changes, rebuild on the affected platform:
+- iOS audio module changes (`modules/background-audio`): `bun run ios`
+- Android foreground-service changes (`services/background`, Android manifest/gradle): `bun run android`
 
 ## Documentation Maintenance
 
@@ -31,6 +38,7 @@ The `llm/` directory contains:
   - `signer-features.md`: Signer functionality and peer management
   - `state-management.md`: Zustand stores and state patterns
 - **System docs**: Feature-specific documentation
+  - `BACKGROUND_SIGNING_ANDROID.md`: Android foreground-service background signing
   - `BACKGROUND_AUDIO_IMPLEMENTATION.md`: Background audio system
   - `SIGNER_SOUNDSCAPE_INTEGRATION.md`: Audio-signer integration
   - `SOUNDSCAPE_SYSTEM.md`: Soundscape selection and playback
@@ -56,7 +64,7 @@ Always review the relevant `llm/` files when making substantial changes and upda
 
 ### Entry Point & Crypto Polyfill
 
-The app uses a custom entry point (`index.js`) that loads `polyfills/crypto.ts` via `require()` before any ES modules. This is critical because `@noble/hashes` (used by bifrost) captures `crypto.getRandomValues` at module evaluation time. ES imports are hoisted, so polyfills must run synchronously first.
+The app uses a custom CommonJS entry point (`index.js`) that loads the compiled CommonJS polyfill (`polyfills/crypto.js`) via `require()` before any ES modules. If the TypeScript source (`polyfills/crypto.ts`) exists, it is the authoring source compiled to `polyfills/crypto.js`. The polyfill uses `expo-crypto` to provide `crypto.getRandomValues` on all global scopes (global, globalThis, window). This ordering is necessary because `index.js` must synchronously load the compiled polyfill before any ES module evaluation, which is critical for `@noble/hashes` (used by bifrost) and bifrost capturing `crypto.getRandomValues` at module-eval time. ES imports are hoisted, so polyfills must run synchronously first.
 
 ### Routing (Expo Router)
 
@@ -82,7 +90,7 @@ Navigation is credential-gated: users without credentials are redirected to `/on
 - Singleton wrapping `@frostr/igloo-core` functions
 - Manages BifrostNode lifecycle (start/stop signer)
 - Uses EventEmitter pattern to communicate with React layer
-- Handles background audio lifecycle on iOS (required for background execution)
+- Handles iOS background audio lifecycle only (required for iOS background execution)
 
 Key events emitted: `status:changed`, `signing:request`, `signing:complete`, `peer:status`, `log`
 
@@ -90,6 +98,11 @@ Key events emitted: `status:changed`, `signing:request`, `signing:complete`, `pe
 - Wraps native `BackgroundAudioModule` (Expo Modules API)
 - Plays ambient soundscapes to keep app alive in iOS background
 - Handles audio interruptions (phone calls, Siri) and automatic resume
+
+**AndroidForegroundSignerService** (`services/background/AndroidForegroundSignerService.ts`):
+- Wraps `react-native-background-actions`
+- Starts/stops Android foreground service while signer is running
+- Provides persistent notification keepalive on Android
 
 **SecureStorage** (`services/storage/secureStorage.ts`):
 - Uses `expo-secure-store` for encrypted credential storage
@@ -138,7 +151,9 @@ Native events are emitted for interruptions and state changes, translated to `Au
 ### Signer Lifecycle
 1. `iglooService.startSigner(group, share, relays)` creates BifrostNode
 2. Node connects to relays, starts listening for signing requests
-3. On iOS, AudioService starts playing to enable background execution
+3. Platform keepalive starts:
+   - iOS: AudioService soundscape playback
+   - Android: `androidForegroundSignerService` foreground service
 4. Events flow: BifrostNode → IglooService → EventEmitter → useIgloo → Zustand stores → UI
 
 ### Peer Pubkey Normalization
@@ -151,9 +166,14 @@ Pubkeys are normalized to lowercase hex via `normalizePubkey()` from igloo-core.
 
 Decoded via `decodeShare()` and `decodeGroup()` from `@frostr/igloo-core`.
 
-## iOS Background Execution
+## Background Execution by Platform
 
-iOS requires active audio playback for background execution. The app plays ambient soundscapes (ocean waves, rain, etc.) when the signer is running. Audio interruptions (phone calls) are handled gracefully with automatic resume.
+- iOS requires active audio playback for background execution. The app plays ambient soundscapes while the signer is running and handles interruptions with resume logic.
+- Android uses a foreground service and persistent notification while signer mode is active.
+
+Authoritative docs:
+- Android: `llm/BACKGROUND_SIGNING_ANDROID.md`
+- iOS: `llm/BACKGROUND_AUDIO_IMPLEMENTATION.md`
 
 ## Type Definitions
 

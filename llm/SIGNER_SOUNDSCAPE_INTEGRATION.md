@@ -1,5 +1,8 @@
 # Signer Soundscape Integration
 
+> **Scope**: This document is iOS-specific (soundscape/audio keepalive path).
+> For Android foreground-service keepalive, see [BACKGROUND_SIGNING_ANDROID.md](./BACKGROUND_SIGNING_ANDROID.md).
+
 ## Overview
 
 The "soundscape" feature is the integration between the Igloo threshold signer (BifrostNode) and the background audio system. When the signer starts, ambient audio begins playing to keep the iOS app alive in the background. When the signer stops, the audio stops.

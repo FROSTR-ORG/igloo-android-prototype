@@ -8,7 +8,7 @@ import '@/polyfills/nostr-shim';
 import '../global.css';
 
 import { useEffect, useState } from 'react';
-import { LogBox } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 
 // Suppress SafeAreaView deprecation warning from react-navigation internals
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
@@ -72,7 +72,9 @@ function RootLayoutNav() {
 
   // Pre-initialize audio mode to avoid delay when signer starts
   useEffect(() => {
-    audioService.initialize().catch(console.warn);
+    if (Platform.OS === 'ios') {
+      audioService.initialize().catch(console.warn);
+    }
   }, []);
 
   // Hydrate credential state from storage on mount

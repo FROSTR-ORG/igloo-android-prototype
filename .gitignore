@@ -13,10 +13,13 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+android/app/debug.keystore
+android/keystore.properties
 
 # Metro
 .metro-health-check*

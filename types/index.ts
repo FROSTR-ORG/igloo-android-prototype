@@ -177,7 +177,6 @@ export interface SignerStoreState {
   setAudioStatus: (status: AudioStatus) => void;
   setConnectedRelays: (relays: string[]) => void;
   setError: (error: string | null) => void;
-  incrementRequestsReceived: () => void;
   incrementRequestsCompleted: () => void;
   addSigningRequest: (request: SigningRequest) => void;
   updateSigningRequest: (id: string, update: Partial<SigningRequest>) => void;

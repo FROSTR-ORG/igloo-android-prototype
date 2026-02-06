@@ -12,9 +12,14 @@ try {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
   // Check if already patched
-  if (pkg.exports['./crypto.js']) {
+  if (pkg.exports && pkg.exports['./crypto.js']) {
     console.log('[@noble/hashes] Already patched');
     process.exit(0);
+  }
+
+  // Initialize exports if it doesn't exist
+  if (!pkg.exports) {
+    pkg.exports = {};
   }
 
   // Add ./crypto.js export (mirrors ./crypto)

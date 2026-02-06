@@ -1,6 +1,8 @@
-# Igloo iOS - Development Workflow
+# Igloo Android - Development Workflow
 
 > **iOS-Specific Guide**: For detailed instructions on running the app with Expo Go, iOS Simulator, or a physical device, see [ios-development.md](./ios-development.md).
+>
+> **Platform Keepalive Difference**: This repo is an almost exact clone of `../igloo-ios`, but Android background signing runs via foreground service (not iOS soundscape/audio keepalive). See [BACKGROUND_SIGNING_ANDROID.md](../BACKGROUND_SIGNING_ANDROID.md).
 
 ## Prerequisites
 
@@ -39,7 +41,7 @@
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd igloo-ios
+cd igloo-android
 
 # Install dependencies with Bun
 bun install
@@ -76,7 +78,10 @@ bun run android
 bun run web
 ```
 
-> **Important**: This app includes custom native modules (BackgroundAudioModule for background signer operation). Use `npx expo run:ios` for full functionality. Expo Go only works for UI prototyping. See [ios-development.md](./ios-development.md) for details.
+> **Important**:
+> - iOS full background signing requires the native `BackgroundAudioModule` (`npx expo run:ios`).
+> - Android background signing requires the native foreground-service module (`bun run android` / `npx expo run:android`).
+> - Expo Go is only suitable for UI prototyping.
 
 ---
 
@@ -471,7 +476,7 @@ bunx expo start -c
 
 ```bash
 # Remove and reinstall
-rm -rf node_modules bun.lock
+rm -rf node_modules bun.lockb
 bun install
 ```
 

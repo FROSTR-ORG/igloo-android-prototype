@@ -1,15 +1,14 @@
-import { View, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '@/components/ui';
 import { router } from 'expo-router';
 import {
-  Snowflake,
-  Shield,
-  Users,
-  Lock,
   ArrowRight,
+  Shield,
+  Snowflake,
+  Users,
   type LucideIcon,
 } from 'lucide-react-native';
-import { Button } from '@/components/ui';
+import { Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OnboardingWelcome() {
   return (
@@ -49,7 +48,7 @@ export default function OnboardingWelcome() {
             description="Respond to signing requests from other key holders in your group"
           />
           <FeatureItem
-            Icon={Lock}
+            Icon={Shield}
             title="Threshold Security"
             description="No single device can sign alone - requires cooperation from peers"
           />

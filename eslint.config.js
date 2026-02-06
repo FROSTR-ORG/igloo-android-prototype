@@ -23,6 +23,10 @@ export default [
         module: 'readonly',
         __dirname: 'readonly',
         process: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
     plugins: {

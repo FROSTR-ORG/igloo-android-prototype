@@ -1,12 +1,16 @@
-import { create } from 'zustand';
+import type { LogCategory, LogEntry, LogFilter, LogLevel, LogStoreState } from '@/types';
 import { nanoid } from 'nanoid';
-import type { LogStoreState, LogEntry, LogLevel, LogCategory, LogFilter } from '@/types';
+import { create } from 'zustand';
 
 const DEFAULT_MAX_ENTRIES = 500;
 
 const DEFAULT_FILTER: LogFilter = {
   levels: ['debug', 'info', 'warn', 'error'],
-  categories: ['signing', 'relay', 'peer', 'echo'],
+  // Note: 'system' logs were initially omitted from the default filter because they tend to be
+  // extra noisy (e.g., frequent status updates, lifecycle events). They are still available
+  // and can be enabled via the filter UI, but were kept off by default for a cleaner log view.
+  // They are now included by default to match the full LogCategory union.
+  categories: ['signing', 'relay', 'peer', 'echo', 'system'],
 };
 
 function stableStringify(value: unknown): string {

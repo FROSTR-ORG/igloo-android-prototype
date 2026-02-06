@@ -42,12 +42,6 @@ export const useSignerStore = create<SignerStoreState>()((set, get) => ({
     });
   },
 
-  incrementRequestsReceived: () => {
-    set((state) => ({
-      signingRequestsReceived: state.signingRequestsReceived + 1,
-    }));
-  },
-
   incrementRequestsCompleted: () => {
     set((state) => ({
       signingRequestsCompleted: state.signingRequestsCompleted + 1,

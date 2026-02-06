@@ -19,7 +19,7 @@ interface VolumeControlProps {
 const clamp = (val: number) => Math.max(0, Math.min(1, val));
 
 export function VolumeControl({ value, onValueChange, disabled }: VolumeControlProps) {
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(value === 0);
   const previousVolume = useRef(value > 0 ? value : 0.3);
 
   // Track layout for position calculations (measured via onLayout for immediate availability)

@@ -1,4 +1,12 @@
-# Igloo iOS - Implementation Details
+# Igloo Android - Implementation Details
+
+## Platform Parity Note
+
+This codebase is nearly identical to `../igloo-ios`, with one important keepalive difference:
+- iOS background signing depends on soundscape/background audio.
+- Android background signing uses a foreground service with a persistent notification.
+
+Android-specific details are documented in [BACKGROUND_SIGNING_ANDROID.md](../BACKGROUND_SIGNING_ANDROID.md).
 
 ## Expo Router Architecture
 
@@ -44,29 +52,27 @@ The app uses a custom entry point to ensure the crypto polyfill runs before any 
 
 ```javascript
 // index.js - Custom entry point (CommonJS)
-const { getRandomValues } = require('expo-crypto');
+// MUST be first - set up crypto polyfill before anything else loads
+const { polyfillCrypto } = require('./polyfills/crypto');
 
-// Polyfill crypto.getRandomValues on all global objects
-function polyfillCrypto(target) {
-  if (!target) return;
-  if (!target.crypto) {
-    target.crypto = {};
-  }
-  target.crypto.getRandomValues = getRandomValues;
-}
-
+// Apply to all possible global scopes
 polyfillCrypto(global);
 polyfillCrypto(globalThis);
-if (typeof window !== 'undefined') polyfillCrypto(window);
+if (typeof window !== 'undefined') {
+  polyfillCrypto(window);
+}
 
-// Now load expo-router
+// Now load the actual app entry point
 require('expo-router/entry');
 ```
+
+The polyfill implementation is in `polyfills/crypto.ts`, which uses `expo-crypto` to provide `crypto.getRandomValues`. This file-based approach keeps the entry point clean while ensuring the polyfill runs synchronously via `require()` before any ES module imports are hoisted.
 
 **Why a custom entry point?**
 - ES module imports are hoisted and evaluated before code runs
 - If the polyfill was just "first import" in _layout.tsx, other imports would still load first
 - A custom entry point ensures the polyfill runs before expo-router loads any modules
+- Using `require()` for the polyfill ensures synchronous execution before ES module evaluation
 
 The entry point is configured in `package.json`:
 ```json

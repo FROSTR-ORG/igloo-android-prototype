@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { Platform } from 'react-native';
 import { useSignerStore, useRelayStore, useCredentialStore, useAudioStore } from '@/stores';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { audioService } from '@/services/audio';
@@ -39,13 +40,19 @@ export function useSigner() {
       throw new Error('No credentials found');
     }
 
-    // Set soundscape before starting (configures which file to play)
-    await audioService.setSoundscape(storedSoundscape);
+    const isIOS = Platform.OS === 'ios';
+
+    if (isIOS) {
+      // Configure iOS background soundscape before signer startup.
+      await audioService.setSoundscape(storedSoundscape);
+    }
 
     await startSigner(credentials.group, credentials.share, relays);
 
-    // Apply volume AFTER signer starts (audio player must exist first)
-    await audioService.setVolume(storedVolume);
+    if (isIOS) {
+      // Apply iOS playback volume after native player initialization.
+      await audioService.setVolume(storedVolume);
+    }
   }, [startSigner, relays, storedVolume, storedSoundscape]);
 
   /**

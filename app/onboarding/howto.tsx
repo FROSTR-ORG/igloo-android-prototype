@@ -1,15 +1,15 @@
-import { View, Text, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Alert, Button } from '@/components/ui';
 import * as Linking from 'expo-linking';
+import { router } from 'expo-router';
 import {
-  ArrowLeft,
-  Radio,
-  QrCode,
-  Keyboard,
-  ExternalLink,
+    ArrowLeft,
+    ExternalLink,
+    Keyboard,
+    QrCode,
+    Radio,
 } from 'lucide-react-native';
-import { Button, Alert } from '@/components/ui';
+import { Platform, Pressable, Alert as RNAlert, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const EXTERNAL_LINKS = [
   {
@@ -27,8 +27,34 @@ const EXTERNAL_LINKS = [
 ];
 
 export default function OnboardingHowto() {
-  const openUrl = (url: string) => {
-    Linking.openURL(url);
+  const isAndroid = Platform.OS === 'android';
+
+  /**
+   * Opens a URL in the default browser or app handler.
+   * Checks if the URL can be opened before attempting, and handles errors gracefully.
+   */
+  const openUrl = async (url: string) => {
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        console.warn(`Cannot open URL: ${url}`);
+        RNAlert.alert(
+          'Cannot Open Link',
+          'This link cannot be opened on your device.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Failed to open URL:', error);
+      RNAlert.alert(
+        'Error Opening Link',
+        'Unable to open the link. Please try again later.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   return (
@@ -70,9 +96,10 @@ export default function OnboardingHowto() {
         {/* Beta notice */}
         <Alert variant="info" title="Currently in Beta" className="mb-4">
           <Text className="text-sm text-blue-300 leading-5">
-            This app runs as a background signer that responds to signing
-            requests from other nodes in your quorum. It cannot initiate
-            signatures yet - only respond when your peers request a signature.
+            {isAndroid
+              ? 'On Android, Igloo keeps signing active using a foreground service with a persistent notification while signer mode is on.'
+              : 'This app runs as a background signer that responds to signing requests from other nodes in your quorum.'}{' '}
+            It cannot initiate signatures yet - only respond when your peers request a signature.
           </Text>
         </Alert>
 
@@ -88,7 +115,7 @@ export default function OnboardingHowto() {
         {/* Demo mode for review */}
         <Alert variant="info" title="App Review Demo Mode" className="mb-6">
           <Text className="text-sm text-blue-300 leading-5">
-            If you don't have credentials yet, you can enter demo mode to load
+            If you do not have credentials yet, you can enter demo mode to load
             a review-ready group and share.
           </Text>
         </Alert>

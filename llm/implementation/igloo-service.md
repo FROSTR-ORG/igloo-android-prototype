@@ -71,6 +71,7 @@ The service extends `EventEmitter<IglooServiceEvents>` with strongly-typed event
 ```typescript
 interface IglooServiceEvents {
   'status:changed': (status: SignerStatus) => void;
+  'audio:status': (status: AudioStatus) => void; // iOS keepalive status only
   'relay:connected': (relay: string) => void;
   'relay:disconnected': (relay: string) => void;
   'signing:request': (request: SigningRequest) => void;
@@ -152,6 +153,22 @@ async stopSigner(): Promise<void>
 2. Call `cleanupBifrostNode()` from igloo-core
 3. Clear instance state (node, credentials, relays)
 4. Emit `status:changed` → `'stopped'`
+
+### Platform-Specific Background Keepalive
+
+This repository is almost a clone of `../igloo-ios`, but background signing is platform-specific:
+
+- **iOS path (inside `IglooService`)**
+  - `ENABLE_BACKGROUND_AUDIO` is `Platform.OS === 'ios'`.
+  - `startSigner()` starts `audioService.play()` and emits `audio:status`.
+  - `stopSigner()` stops audio keepalive via `stopBackgroundAudio()`.
+
+- **Android path (outside `IglooService`)**
+  - `IglooService` does not start Android keepalive.
+  - `hooks/useSigner.ts` starts/stops `androidForegroundSignerService`.
+  - Android background operation is handled by a foreground service notification.
+
+For full Android flow, see [BACKGROUND_SIGNING_ANDROID.md](../BACKGROUND_SIGNING_ANDROID.md).
 
 ### `validateCredentials()`
 
@@ -380,7 +397,7 @@ This enables the verbose logging feature - all log entries are captured by `useI
 
 | Category | Purpose | Examples |
 |----------|---------|----------|
-| `system` | Signer lifecycle, audio events, credential decode | "Signer node started", "Background audio resumed" |
+| `system` | Signer lifecycle, keepalive events, credential decode | "Signer node started", "Background audio resumed (iOS)" |
 | `relay` | Relay connection/disconnection events | "Connected to N relay(s)", "Disconnecting from relays" |
 | `peer` | Peer extraction, ping operations, policy updates | "Extracted N peers", "Ping result" |
 | `signing` | Signing requests, completions, errors, correlation | "Received signing request", "Signing request completed" |
@@ -392,7 +409,7 @@ This enables the verbose logging feature - all log entries are captured by `useI
 |-------|-------------|
 | `debug` | Verbose per-operation details (ping results, credential decode success, echo initiation) |
 | `info` | Normal operational events (signer started, relay connected, signing completed) |
-| `warn` | Degraded states that aren't errors (audio interrupted, stale request evicted) |
+| `warn` | Degraded states that aren't errors (audio interrupted on iOS, stale request evicted) |
 | `error` | Failures requiring attention (signer failed, decode error, signing error) |
 
 ### Guidelines

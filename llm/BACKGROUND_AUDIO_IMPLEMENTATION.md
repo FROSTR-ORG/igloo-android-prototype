@@ -1,5 +1,8 @@
 # Background Audio Implementation
 
+> **Scope**: This document is iOS-specific (soundscape/audio keepalive path).
+> For Android foreground-service keepalive, see [BACKGROUND_SIGNING_ANDROID.md](./BACKGROUND_SIGNING_ANDROID.md).
+
 ## Overview
 
 This document describes the native iOS background audio implementation for the Igloo app. The implementation uses Expo Modules API with Swift/AVFoundation to enable reliable background audio playback that keeps the app alive when backgrounded.

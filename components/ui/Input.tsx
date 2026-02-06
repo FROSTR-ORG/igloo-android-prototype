@@ -1,6 +1,6 @@
-import { View, TextInput, Text, type TextInputProps } from 'react-native';
-import { useState } from 'react';
 import Colors from '@/constants/Colors';
+import { useState } from 'react';
+import { Text, TextInput, View, type TextInputProps } from 'react-native';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -40,7 +40,7 @@ export function Input({
               ? 'border-blue-500'
               : 'border-gray-700/50'
           }
-          ${multiline ? 'min-h-[100px] text-top' : ''}
+          ${multiline ? 'min-h-[100px]' : ''}
         `}
         placeholderTextColor={Colors.placeholder}
         onFocus={(e) => {

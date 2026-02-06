@@ -21,7 +21,6 @@ import {
   SlidersHorizontal,
   Copy,
   Check,
-  Loader2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useState } from 'react';
@@ -305,86 +304,92 @@ function PeerCard({
   return (
     <Card padding="none">
       {/* Main Row */}
-      <Pressable
-        className="flex-row items-center p-4"
-        onPress={() => setExpanded(!expanded)}
-      >
-        {/* Status Avatar */}
-        <View
-          className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
-            peer.status === 'online'
-              ? 'bg-green-900/30'
-              : peer.status === 'offline'
-                ? 'bg-red-900/30'
-                : 'bg-gray-800'
-          }`}
+      <View className="flex-row items-center p-4">
+        <Pressable
+          className="flex-1 flex-row items-center"
+          onPress={() => setExpanded(!expanded)}
         >
-          <User size={18} color={getStatusColor()} strokeWidth={2} />
-        </View>
+          {/* Status Avatar */}
+          <View
+            className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
+              peer.status === 'online'
+                ? 'bg-green-900/30'
+                : peer.status === 'offline'
+                  ? 'bg-red-900/30'
+                  : 'bg-gray-800'
+            }`}
+          >
+            <User size={18} color={getStatusColor()} strokeWidth={2} />
+          </View>
 
-        {/* Peer Info */}
-        <View className="flex-1">
-          {peer.displayName && (
-            <Text className="text-sm font-medium text-gray-100 mb-0.5">
-              {peer.displayName}
-            </Text>
-          )}
-          <Pressable onPress={(e) => { e.stopPropagation(); handleCopyPubkey(); }}>
+          {/* Peer Info */}
+          <View className="flex-1">
+            {peer.displayName && (
+              <Text className="text-sm font-medium text-gray-100 mb-0.5">
+                {peer.displayName}
+              </Text>
+            )}
             <View className="flex-row items-center">
               <Text className={`text-sm font-mono ${peer.displayName ? 'text-gray-400' : 'text-gray-100'}`}>
                 {truncatePubkey(peer.pubkey)}
               </Text>
-              {copied ? (
-                <Check size={12} color="#4ade80" strokeWidth={2} style={{marginLeft: 4}} />
-              ) : (
-                <Copy size={12} color="#9ca3af" strokeWidth={2} style={{marginLeft: 4}} />
+            </View>
+            <View className="flex-row items-center mt-1 flex-wrap gap-1">
+              {getStatusBadge()}
+              {peer.latency !== null && peer.status === 'online' && (
+                <View className="flex-row items-center">
+                  <Radio size={10} color="#9ca3af" strokeWidth={2} />
+                  <Text className="text-xs text-gray-400 ml-1">
+                    {peer.latency}ms
+                  </Text>
+                </View>
+              )}
+              {peer.lastSeen && (
+                <Text className="text-xs text-gray-400">
+                  {formatLastSeen(peer.lastSeen)}
+                </Text>
               )}
             </View>
-          </Pressable>
-          <View className="flex-row items-center mt-1 flex-wrap gap-1">
-            {getStatusBadge()}
-            {peer.latency !== null && peer.status === 'online' && (
-              <View className="flex-row items-center">
-                <Radio size={10} color="#9ca3af" strokeWidth={2} />
-                <Text className="text-xs text-gray-400 ml-1">
-                  {peer.latency}ms
-                </Text>
-              </View>
+          </View>
+
+          {/* Expand indicator with policy icon */}
+          <View className="flex-row items-center gap-1 ml-2">
+            {expanded && (
+              <SlidersHorizontal size={14} color="#60a5fa" strokeWidth={2} />
             )}
-            {peer.lastSeen && (
-              <Text className="text-xs text-gray-400">
-                {formatLastSeen(peer.lastSeen)}
-              </Text>
+            {expanded ? (
+              <ChevronUp size={14} color="#9ca3af" strokeWidth={2} />
+            ) : (
+              <ChevronDown size={14} color="#9ca3af" strokeWidth={2} />
             )}
           </View>
-        </View>
+        </Pressable>
 
-        {/* Actions */}
-        <View className="flex-row items-center gap-1">
-          {/* Per-Peer Ping Button */}
+        {/* Row action controls (separate press targets from row Pressable) */}
+        <View className="flex-row items-center gap-1 ml-2">
+          <IconButton
+            icon={
+              copied ? (
+                <Check size={12} color="#4ade80" strokeWidth={2} />
+              ) : (
+                <Copy size={12} color="#9ca3af" strokeWidth={2} />
+              )
+            }
+            variant="ghost"
+            size="sm"
+            onPress={handleCopyPubkey}
+          />
           {isSignerRunning && (
             <IconButton
               icon={<Radio size={14} color="#9ca3af" strokeWidth={2} />}
               variant="ghost"
               size="sm"
-              onPress={(e) => {
-                e.stopPropagation();
-                onPing();
-              }}
+              onPress={onPing}
               loading={isPinging}
             />
           )}
-          {/* Expand indicator with policy icon */}
-          {expanded && (
-            <SlidersHorizontal size={14} color="#60a5fa" strokeWidth={2} />
-          )}
-          {expanded ? (
-            <ChevronUp size={14} color="#9ca3af" strokeWidth={2} />
-          ) : (
-            <ChevronDown size={14} color="#9ca3af" strokeWidth={2} />
-          )}
         </View>
-      </Pressable>
+      </View>
 
       {/* Expanded Section - Policies */}
       {expanded && (

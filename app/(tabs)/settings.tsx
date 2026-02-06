@@ -14,13 +14,14 @@ import {
   Volume2,
 } from 'lucide-react-native';
 import { useCallback } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import pkg from '../../package.json';
 
 const IGLOO_CORE_VERSION = pkg.dependencies['@frostr/igloo-core']?.replace(/^[\^~]/, '') ?? 'unknown';
 
 export default function SettingsTab() {
+  const isIOS = Platform.OS === 'ios';
   const { stop, isRunning } = useSigner();
   const { shareDetails, deleteCredentials } = useCredentials();
   const relays = useRelayStore((s) => s.relays);
@@ -137,60 +138,83 @@ export default function SettingsTab() {
             </Card>
           </View>
 
-          {/* Soundscape Selection */}
-          <View className="mb-6">
-            <View className="flex-row items-center gap-1 mb-3">
-              <Music size={14} color="#9ca3af" strokeWidth={2} />
-              <Text className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-                Soundscape
-              </Text>
-              <HelpTooltip
-                title="Soundscape Selection"
-                content="Choose the ambient sound that plays while your signer is active. The soundscape keeps your signer responsive in the background."
-                size={14}
-              />
-            </View>
+          {isIOS ? (
+            <>
+              {/* Soundscape Selection */}
+              <View className="mb-6">
+                <View className="flex-row items-center gap-1 mb-3">
+                  <Music size={14} color="#9ca3af" strokeWidth={2} />
+                  <Text className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                    Soundscape
+                  </Text>
+                  <HelpTooltip
+                    title="Soundscape Selection"
+                    content="Choose the ambient sound that plays while your signer is active. The soundscape keeps your signer responsive in the background."
+                    size={14}
+                  />
+                </View>
 
-            <Card>
-              <SoundscapeSelector
-                value={soundscapeId}
-                onValueChange={handleSoundscapeChange}
-              />
-              {!isRunning && (
-                <Text className="text-xs text-gray-500 mt-2">
-                  Start signer to play soundscape
+                <Card>
+                  <SoundscapeSelector
+                    value={soundscapeId}
+                    onValueChange={handleSoundscapeChange}
+                  />
+                  {!isRunning && (
+                    <Text className="text-xs text-gray-500 mt-2">
+                      Start signer to play soundscape
+                    </Text>
+                  )}
+                </Card>
+              </View>
+
+              {/* Soundscape Volume */}
+              <View className="mb-6">
+                <View className="flex-row items-center gap-1 mb-3">
+                  <Volume2 size={14} color="#9ca3af" strokeWidth={2} />
+                  <Text className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                    Soundscape Volume
+                  </Text>
+                  <HelpTooltip
+                    title="Background Audio"
+                    content="The soundscape keeps your signer active when the app is in the background. It plays even in silent mode. Adjust volume to your preference - set to Off to mute."
+                    size={14}
+                  />
+                </View>
+
+                <Card>
+                  <VolumeControl
+                    value={volume}
+                    onValueChange={handleVolumeChange}
+                    disabled={!isRunning}
+                  />
+                  {!isRunning && (
+                    <Text className="text-xs text-gray-500 mt-2">
+                      Start the signer to adjust volume
+                    </Text>
+                  )}
+                </Card>
+              </View>
+            </>
+          ) : (
+            <View className="mb-6">
+              <View className="flex-row items-center gap-1 mb-3">
+                <Text className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                  Android Background Mode
                 </Text>
-              )}
-            </Card>
-          </View>
-
-          {/* Soundscape Volume */}
-          <View className="mb-6">
-            <View className="flex-row items-center gap-1 mb-3">
-              <Volume2 size={14} color="#9ca3af" strokeWidth={2} />
-              <Text className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-                Soundscape Volume
-              </Text>
-              <HelpTooltip
-                title="Background Audio"
-                content="The soundscape keeps your signer active when the app is in the background. It plays even in silent mode. Adjust volume to your preference - set to Off to mute."
-                size={14}
-              />
-            </View>
-
-            <Card>
-              <VolumeControl
-                value={volume}
-                onValueChange={handleVolumeChange}
-                disabled={!isRunning}
-              />
-              {!isRunning && (
-                <Text className="text-xs text-gray-500 mt-2">
-                  Start the signer to adjust volume
+                <HelpTooltip
+                  title="Foreground Service"
+                  content="On Android, signer background support uses a foreground service. When enabled, Android shows a persistent notification while signing is active."
+                  size={14}
+                />
+              </View>
+              <Card>
+                <Text className="text-sm text-gray-300">
+                  Signer background support runs through an Android foreground service with a
+                  persistent notification while signer mode is active.
                 </Text>
-              )}
-            </Card>
-          </View>
+              </Card>
+            </View>
+          )}
 
           {/* Credential Info */}
           {shareDetails && (

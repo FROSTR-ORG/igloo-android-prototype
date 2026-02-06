@@ -26,7 +26,6 @@ import {
   HelpTooltip,
   Collapsible,
   CredentialDisplay,
-  CompactCredential,
   GradientBackground,
 } from '@/components/ui';
 import { useSigner, useIgloo, useCopyFeedback } from '@/hooks';
@@ -60,10 +59,13 @@ export default function SignerTab() {
   const setVolume = useAudioStore((s) => s.setVolume);
   const previousVolume = useRef(volume > 0 ? volume : 0.3);
 
-  const [uptime, setUptime] = useState(0);
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [decodedGroup, setDecodedGroup] = useState<object | null>(null);
   const [decodedShare, setDecodedShare] = useState<object | null>(null);
+
+  // Derive uptime from getUptime() when running, otherwise 0
+  const uptime = isRunning ? getUptime() : 0;
+  const [, forceUpdate] = useState(0);
 
   // Load credentials on mount
   useEffect(() => {
@@ -88,19 +90,16 @@ export default function SignerTab() {
     };
   }, [decodeGroupCredential, decodeShareCredential]);
 
-  // Update uptime every second when running
+  // Force re-render every second when running to update uptime display
   useEffect(() => {
-    if (!isRunning) {
-      setUptime(0);
-      return;
-    }
+    if (!isRunning) return;
 
     const interval = setInterval(() => {
-      setUptime(getUptime());
+      forceUpdate((n) => n + 1);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRunning, getUptime]);
+  }, [isRunning]);
 
   const handleToggle = useCallback(async () => {
     try {
@@ -124,7 +123,7 @@ export default function SignerTab() {
     if (shareDetails?.groupPubkey) {
       await copyPubkey(shareDetails.groupPubkey);
     }
-  }, [shareDetails?.groupPubkey, copyPubkey]);
+  }, [shareDetails, copyPubkey]);
 
   const handleMuteToggle = useCallback(async () => {
     await Haptics.selectionAsync();
@@ -444,8 +443,9 @@ export default function SignerTab() {
 }
 
 function SignerStatusIndicator({ status }: { status: SignerStatus }) {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const spinAnim = useRef(new Animated.Value(0)).current;
+  // Use useState with lazy initialization for Animated.Values (React Compiler compatible)
+  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const [spinAnim] = useState(() => new Animated.Value(0));
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const spinAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 

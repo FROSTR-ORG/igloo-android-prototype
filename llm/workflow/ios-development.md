@@ -1,5 +1,8 @@
 # iOS Development Guide
 
+> **Scope**: iOS-only development workflow.
+> For Android background-signing behavior, see [../BACKGROUND_SIGNING_ANDROID.md](../BACKGROUND_SIGNING_ANDROID.md).
+
 This guide covers three ways to run the Igloo app during development:
 
 | Method | Use Case | Native Modules | Speed |

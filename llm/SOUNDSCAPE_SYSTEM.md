@@ -1,5 +1,8 @@
 # Soundscape System
 
+> **Scope**: This document is iOS-specific (soundscape/audio keepalive path).
+> For Android foreground-service keepalive, see [BACKGROUND_SIGNING_ANDROID.md](./BACKGROUND_SIGNING_ANDROID.md).
+
 ## Overview
 
 The Soundscape System provides a scalable architecture for managing multiple ambient audio options in the Igloo signer. Users can select from a variety of soundscapes to play while their signer is active, personalizing their background audio experience.

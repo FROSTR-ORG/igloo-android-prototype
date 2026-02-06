@@ -1,42 +1,50 @@
-import { Platform } from 'react-native';
-import EventEmitter from 'eventemitter3';
-import {
-  createConnectedNode,
-  cleanupBifrostNode,
-  validateShare,
-  validateGroup,
-  getShareDetailsWithGroup,
-  extractPeersFromCredentials,
-  pingPeersAdvanced,
-  sendEcho,
-  setNodePolicies,
-  decodeGroup,
-  decodeShare,
-  normalizePubkey,
-} from '@frostr/igloo-core';
-import type { BifrostNode } from '@frostr/bifrost';
-import type { NodeEventConfig, PingResult as IglooPingResult } from '@frostr/igloo-core';
+import { audioService } from '@/services/audio';
+import { androidForegroundSignerService } from '@/services/background';
 import type {
-  SignerStatus,
+  IglooServiceEvents,
+  LogCategory,
+  LogEntry,
+  LogLevel,
+  PeerPolicy,
+  PeerStatus,
+  PingResult,
+  ShareDetails,
   SigningRequest,
   SigningResult,
   ValidationResult,
-  ShareDetails,
-  PeerStatus,
-  PeerPolicy,
-  PingResult,
-  LogLevel,
-  LogCategory,
-  LogEntry,
-  IglooServiceEvents,
 } from '@/types';
+import type { BifrostNode } from '@frostr/bifrost';
+import type { PingResult as IglooPingResult, NodeEventConfig } from '@frostr/igloo-core';
+import {
+  cleanupBifrostNode,
+  createConnectedNode,
+  decodeGroup,
+  decodeShare,
+  extractPeersFromCredentials,
+  getShareDetailsWithGroup,
+  normalizePubkey,
+  pingPeersAdvanced,
+  sendEcho,
+  setNodePolicies,
+  validateGroup,
+  validateShare,
+} from '@frostr/igloo-core';
+import EventEmitter from 'eventemitter3';
+import { Platform } from 'react-native';
 import type { StartSignerOptions } from './types';
-import { audioService } from '@/services/audio';
 
 // Background audio soundscape is iOS-only because:
 // 1. iOS requires audio playback for background execution
 // 2. Android uses different background execution mechanisms (foreground services)
 const ENABLE_BACKGROUND_AUDIO = Platform.OS === 'ios';
+const ENABLE_ANDROID_FOREGROUND_SERVICE = Platform.OS === 'android';
+
+class StartCancelledError extends Error {
+  constructor(stage: string) {
+    super(`Signer start cancelled (${stage})`);
+    this.name = 'StartCancelledError';
+  }
+}
 
 /**
  * IglooService - Core service wrapping @frostr/igloo-core for React Native.
@@ -54,6 +62,12 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
   private pendingRequests: Map<string, SigningRequest> = new Map();
   // Track registered node event handlers for cleanup
   private nodeEventHandlers: Array<{ event: string; handler: (...args: unknown[]) => void }> = [];
+  // Promise barrier used by start/stop paths to wait for active teardown completion.
+  private teardownPromise: Promise<void> | null = null;
+  // Track in-flight start attempts so stop can cancel connecting starts.
+  private nextStartAttemptId = 1;
+  private currentStartAttemptId: number | null = null;
+  private cancelledStartAttemptId = 0;
 
   /**
    * Start the signer node and connect to relays.
@@ -62,18 +76,34 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     groupCredential: string,
     shareCredential: string,
     relays: string[],
-    options: StartSignerOptions = {}
+    _options: StartSignerOptions = {}
   ): Promise<void> {
-    // Don't start if already running - restart with audio preserved
-    if (this.node) {
-      this.log('warn', 'system', 'Signer already running, restarting (keeping audio)...');
-      await this.stopSigner({ keepAudio: true });
-    }
-
-    this.emit('status:changed', 'connecting');
-    this.log('info', 'system', 'Starting signer node...', { relays });
+    const startAttemptId = this.beginStartAttempt();
 
     try {
+      await this.waitForTeardownCompletion('start');
+      this.throwIfStartCancelled(startAttemptId, 'before-start');
+
+      // Don't start if already running - restart with audio preserved
+      if (this.node) {
+        this.log('warn', 'system', 'Signer already running, restarting (keeping audio)...');
+        await this.stopSigner({
+          keepAudio: true,
+          keepForegroundService: false,  // Always stop service on restart
+          cancelPendingStart: false,
+        });
+        this.throwIfStartCancelled(startAttemptId, 'after-restart-stop');
+      }
+
+      this.emit('status:changed', 'connecting');
+      this.log('info', 'system', 'Starting signer node...', { relays });
+
+      this.throwIfStartCancelled(startAttemptId, 'before-foreground-service-start');
+      if (ENABLE_ANDROID_FOREGROUND_SERVICE) {
+        await this.startAndroidForegroundService();
+        this.throwIfStartCancelled(startAttemptId, 'after-foreground-service-start');
+      }
+
       const eventConfig: NodeEventConfig = {
         enableLogging: true,
         logLevel: 'debug',
@@ -107,7 +137,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         },
       };
 
-      const { node, state } = await createConnectedNode(
+      const connection = await createConnectedNode(
         {
           group: groupCredential,
           share: shareCredential,
@@ -115,6 +145,12 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         },
         eventConfig
       );
+      if (this.isStartCancelled(startAttemptId)) {
+        cleanupBifrostNode(connection.node);
+        throw new StartCancelledError('after-node-connect');
+      }
+
+      const { node, state } = connection;
 
       this.node = node;
       this.groupCredential = groupCredential;
@@ -124,9 +160,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       // Fail fast if no relays connected
       if (this.currentRelays.length === 0) {
         cleanupBifrostNode(this.node);
-        this.node = null;
-        this.groupCredential = null;
-        this.shareCredential = null;
+        this.resetRuntimeState();
         this.emit('status:changed', 'error');
         throw new Error('Failed to connect to any relays');
       }
@@ -137,6 +171,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
 
       // Start background audio to keep app alive in iOS background mode
       if (ENABLE_BACKGROUND_AUDIO) {
+        this.throwIfStartCancelled(startAttemptId, 'before-audio-start');
         try {
           // Set up callback to receive native audio status changes (interruptions, etc.)
           audioService.setStatusChangeCallback((status) => {
@@ -151,17 +186,27 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
           });
 
           await audioService.play();
+          if (this.isStartCancelled(startAttemptId)) {
+            await this.stopBackgroundAudio();
+            throw new StartCancelledError('after-audio-start');
+          }
+
           this.emit('audio:status', 'playing');
 
           // Subscribe to native events for interruption handling
+          this.throwIfStartCancelled(startAttemptId, 'before-audio-subscribe');
           audioService.subscribeToNativeEvents();
 
           // Start health check as fallback to detect if audio stops unexpectedly
+          this.throwIfStartCancelled(startAttemptId, 'before-audio-health-check');
           audioService.startHealthCheck(() => {
             this.emit('audio:status', 'error');
             this.log('warn', 'system', 'Background audio stopped unexpectedly');
           });
         } catch (error) {
+          if (error instanceof StartCancelledError || this.isStartCancelled(startAttemptId)) {
+            throw error;
+          }
           this.emit('audio:status', 'error');
           this.log('warn', 'system', 'Failed to start background audio', {
             error: error instanceof Error ? error.message : 'Unknown',
@@ -189,11 +234,28 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         this.log('warn', 'relay', 'Some relays failed to connect', { failedRelays });
       }
     } catch (error) {
+      if (error instanceof StartCancelledError || this.isStartCancelled(startAttemptId)) {
+        this.log('info', 'system', 'Signer start cancelled', {
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+
+      // Roll back Android foreground service when startup fails before a node is active.
+      // If node teardown already occurred, this is a harmless no-op.
+      if (!this.node) {
+        await this.stopAndroidForegroundService();
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.emit('status:changed', 'error');
       this.emit('error', error instanceof Error ? error : new Error(errorMessage));
       this.log('error', 'system', 'Failed to start signer', { error: errorMessage });
       throw error;
+    } finally {
+      if (this.currentStartAttemptId === startAttemptId) {
+        this.currentStartAttemptId = null;
+      }
     }
   }
 
@@ -201,73 +263,206 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
    * Stop the signer node and clean up resources.
    * @param options.keepAudio - If true, don't stop background audio (used during restart)
    */
-  async stopSigner(options: { keepAudio?: boolean } = {}): Promise<void> {
-    if (!this.node) {
-      this.log('debug', 'system', 'No node to stop');
-      return;
+  async stopSigner(
+    options: { keepAudio?: boolean; keepForegroundService?: boolean; cancelPendingStart?: boolean } = {}
+  ): Promise<void> {
+    if (options.cancelPendingStart !== false) {
+      this.cancelPendingStart('manual-stop');
     }
 
-    this.log('info', 'system', 'Stopping signer node...', { keepAudio: options.keepAudio });
+    this.log('info', 'system', 'Stopping signer node...', {
+      keepAudio: options.keepAudio,
+      keepForegroundService: options.keepForegroundService,
+      cancelPendingStart: options.cancelPendingStart ?? true,
+    });
+    const didTeardown = await this.teardownSigner({
+      keepAudio: options.keepAudio,
+      keepForegroundService: options.keepForegroundService,
+      reason: 'manual-stop',
+    });
+    if (didTeardown) {
+      this.log('info', 'system', 'Signer node stopped');
+    }
+  }
+
+  /**
+   * Start Android foreground service keepalive.
+   */
+  private async startAndroidForegroundService(): Promise<void> {
+    if (!ENABLE_ANDROID_FOREGROUND_SERVICE) return;
 
     try {
-      this.log('info', 'relay', 'Disconnecting from relays', {
-        relays: this.currentRelays,
-      });
-
-      // Emit disconnection events for current relays
-      this.currentRelays.forEach((relay) => this.emit('relay:disconnected', relay));
-
-      // Clean up node event listeners before destroying the node
-      this.cleanupNodeEventListeners();
-
-      cleanupBifrostNode(this.node);
-
-      this.node = null;
-      this.groupCredential = null;
-      this.shareCredential = null;
-      this.currentRelays = [];
-      this.peerExtractionMode = 'igloo-core';
-      this.peerExtractionFallbackLogged = false;
-      this.peerExtractionKey = null;
-      this.pendingRequests.clear();
-
-      this.emit('status:changed', 'stopped');
-
-      // Stop background audio (unless we're restarting)
-      if (ENABLE_BACKGROUND_AUDIO && !options.keepAudio) {
-        audioService.stopHealthCheck();
-        audioService.unsubscribeFromNativeEvents();
-        audioService.setStatusChangeCallback(undefined);
-        try {
-          await audioService.stop();
-          this.emit('audio:status', 'idle');
-        } catch (audioError) {
-          this.log('warn', 'system', 'Failed to stop background audio', {
-            error: audioError instanceof Error ? audioError.message : 'Unknown',
-          });
-        }
-      }
-
-      this.log('info', 'system', 'Signer node stopped');
+      await androidForegroundSignerService.start();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.log('error', 'system', 'Error during node cleanup', { error: errorMessage });
-      // Still mark as stopped even if cleanup had issues
-      this.emit('status:changed', 'stopped');
+      this.log('error', 'system', 'Failed to start Android foreground service', {
+        error: errorMessage,
+      });
+      throw error instanceof Error ? error : new Error(errorMessage);
+    }
+  }
 
-      // Also stop audio on error (unless we're restarting)
-      if (ENABLE_BACKGROUND_AUDIO && !options.keepAudio) {
-        audioService.stopHealthCheck();
-        audioService.unsubscribeFromNativeEvents();
-        audioService.setStatusChangeCallback(undefined);
-        try {
-          await audioService.stop();
-          this.emit('audio:status', 'idle');
-        } catch {
-          // Ignore audio stop errors during error handling
+  /**
+   * Stop audio-related keepalive resources.
+   */
+  private async stopBackgroundAudio(): Promise<void> {
+    if (!ENABLE_BACKGROUND_AUDIO) return;
+
+    audioService.stopHealthCheck();
+    audioService.unsubscribeFromNativeEvents();
+    audioService.setStatusChangeCallback(undefined);
+
+    try {
+      await audioService.stop();
+      this.emit('audio:status', 'idle');
+    } catch (audioError) {
+      this.log('warn', 'system', 'Failed to stop background audio', {
+        error: audioError instanceof Error ? audioError.message : 'Unknown',
+      });
+    }
+  }
+
+  /**
+   * Stop Android foreground service keepalive.
+   */
+  private async stopAndroidForegroundService(): Promise<void> {
+    if (!ENABLE_ANDROID_FOREGROUND_SERVICE) return;
+
+    try {
+      await androidForegroundSignerService.stop();
+    } catch (error) {
+      this.log('warn', 'system', 'Failed to stop Android foreground service', {
+        error: error instanceof Error ? error.message : 'Unknown',
+      });
+    }
+  }
+
+  /**
+   * Reset in-memory signer state to a fully stopped baseline.
+   */
+  private resetRuntimeState(): void {
+    this.node = null;
+    this.groupCredential = null;
+    this.shareCredential = null;
+    this.currentRelays = [];
+    this.peerExtractionMode = 'igloo-core';
+    this.peerExtractionFallbackLogged = false;
+    this.peerExtractionKey = null;
+    this.pendingRequests.clear();
+  }
+
+  /**
+   * Mark current in-flight start as cancelled.
+   */
+  private cancelPendingStart(reason: string): void {
+    if (this.currentStartAttemptId === null) return;
+    this.cancelledStartAttemptId = Math.max(this.cancelledStartAttemptId, this.currentStartAttemptId);
+    this.log('debug', 'system', 'Cancelled in-flight signer start', {
+      reason,
+      startAttemptId: this.currentStartAttemptId,
+    });
+  }
+
+  /**
+   * Begin a new start attempt and cancel any previous in-flight attempt.
+   */
+  private beginStartAttempt(): number {
+    if (this.currentStartAttemptId !== null) {
+      this.cancelledStartAttemptId = Math.max(this.cancelledStartAttemptId, this.currentStartAttemptId);
+    }
+    const startAttemptId = this.nextStartAttemptId++;
+    this.currentStartAttemptId = startAttemptId;
+    return startAttemptId;
+  }
+
+  private isStartCancelled(startAttemptId: number): boolean {
+    return this.cancelledStartAttemptId >= startAttemptId;
+  }
+
+  private throwIfStartCancelled(startAttemptId: number, stage: string): void {
+    if (this.isStartCancelled(startAttemptId)) {
+      throw new StartCancelledError(stage);
+    }
+  }
+
+  /**
+   * Block until any in-progress teardown completes.
+   */
+  private async waitForTeardownCompletion(reason: string): Promise<void> {
+    if (!this.teardownPromise) return;
+    this.log('debug', 'system', 'Waiting for signer teardown to finish', { reason });
+    await this.teardownPromise;
+  }
+
+  /**
+   * Shared teardown path for manual stop and unexpected node closure.
+   * Returns false when a concurrent teardown is already in progress.
+   */
+  private async teardownSigner(options: {
+    keepAudio?: boolean;
+    keepForegroundService?: boolean;
+    reason: string;
+  }): Promise<boolean> {
+    if (this.teardownPromise) {
+      this.log('debug', 'system', 'Signer teardown already in progress', { reason: options.reason });
+      await this.teardownPromise;
+      return false;
+    }
+
+    let resolveTeardown: (() => void) | undefined;
+    this.teardownPromise = new Promise<void>((resolve) => {
+      resolveTeardown = resolve;
+    });
+    try {
+      if (this.currentRelays.length > 0) {
+        this.log('info', 'relay', 'Disconnecting from relays', {
+          relays: this.currentRelays,
+        });
+        this.currentRelays.forEach((relay) => this.emit('relay:disconnected', relay));
+      }
+
+      // Remove handlers before destroying the node to prevent duplicate close/error events.
+      this.cleanupNodeEventListeners();
+
+      if (this.node) {
+        cleanupBifrostNode(this.node);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.log('error', 'system', 'Error during signer teardown', {
+        error: errorMessage,
+        reason: options.reason,
+      });
+    } finally {
+      try {
+        this.resetRuntimeState();
+        this.emit('status:changed', 'stopped');
+        if (!options.keepAudio) {
+          await this.stopBackgroundAudio();
         }
+        if (!options.keepForegroundService) {
+          await this.stopAndroidForegroundService();
+        }
+      } finally {
+        this.teardownPromise = null;
+        resolveTeardown?.();
       }
     }
+
+    return true;
+  }
+
+  /**
+   * Handle unexpected node closure from the underlying transport.
+   */
+  private async handleUnexpectedNodeClosure(): Promise<void> {
+    this.log('warn', 'system', 'Node connection closed');
+    this.cancelPendingStart('node-closed');
+    await this.teardownSigner({
+      keepAudio: false,
+      keepForegroundService: false,
+      reason: 'node-closed',
+    });
   }
 
   /**
@@ -423,7 +618,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
 
     if (this.peerExtractionMode === 'igloo-core') {
       try {
-        const peers = extractPeersFromCredentials(group, share).map(normalizePeerPubkey);
+        const peers = extractPeersFromCredentials(group, share).map(normalizePeerPubkey).filter(isNonNullString);
         if (peers.length > 0) {
           this.log('debug', 'peer', `Extracted ${peers.length} peers via igloo-core`, {
             peers: peers.map((p) => truncatePubkey(p)),
@@ -470,14 +665,13 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     // Find self pubkey by matching share index
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const selfCommit = decodedGroup.commits?.find((c: any) => c.idx === decodedShare.idx);
-    const selfPubkey = selfCommit?.pubkey ? normalizePeerPubkey(selfCommit.pubkey) : undefined;
+    const selfPubkey = normalizePeerPubkey(selfCommit?.pubkey);
 
     // Extract all peer pubkeys, excluding self
     const peers = (decodedGroup.commits ?? [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((commit: any) => normalizePeerPubkey(commit.pubkey) !== selfPubkey)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((commit: any) => normalizePeerPubkey(commit.pubkey));
+      .map((commit: any) => normalizePeerPubkey(commit.pubkey))
+      .filter((pubkey): pubkey is string => pubkey !== null && pubkey !== selfPubkey);
 
     this.log('debug', 'peer', 'Manual peer extraction', {
       totalCommits: decodedGroup.commits?.length,
@@ -507,7 +701,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       // Find our commit by matching share index
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const selfCommit = decodedGroup.commits?.find((c: any) => c.idx === decodedShare.idx);
-      const pubkey = selfCommit?.pubkey ? normalizePeerPubkey(selfCommit.pubkey) : null;
+      const pubkey = normalizePeerPubkey(selfCommit?.pubkey);
 
       this.log('debug', 'peer', 'Extracted self pubkey', {
         shareIdx: decodedShare.idx,
@@ -531,7 +725,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       throw new Error('Signer not running');
     }
 
-    const peers = this.getPeers().map(normalizePeerPubkey);
+    const peers = this.getPeers();
     if (peers.length === 0) {
       this.log('info', 'peer', 'No peers to ping');
       return [];
@@ -543,8 +737,15 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       const iglooResults = await pingPeersAdvanced(this.node, peers, { timeout });
 
       // Convert igloo-core PingResult to local PingResult type and emit status updates
-      const results: PingResult[] = iglooResults.map((result: IglooPingResult) => {
+      const results: PingResult[] = iglooResults.reduce<PingResult[]>((acc, result: IglooPingResult) => {
         const normalizedPubkey = normalizePeerPubkey(result.pubkey);
+        if (!normalizedPubkey) {
+          this.log('warn', 'peer', 'Ignoring ping result with invalid pubkey', {
+            pubkey: result.pubkey,
+          });
+          return acc;
+        }
+
         const status: PeerStatus = result.success ? 'online' : 'offline';
         this.emit('peer:status', normalizedPubkey, status, result.latency);
         this.log('debug', 'peer', `Ping ${truncatePubkey(normalizedPubkey)}`, {
@@ -553,15 +754,16 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
           error: result.error,
         });
 
-        return {
+        acc.push({
           success: result.success,
           pubkey: normalizedPubkey,
           latency: result.latency,
           policy: result.policy,
           error: result.error,
           timestamp: result.timestamp,
-        };
-      });
+        });
+        return acc;
+      }, []);
 
       return results;
     } catch (error) {
@@ -581,6 +783,9 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     }
 
     const normalizedPubkey = normalizePeerPubkey(pubkey);
+    if (!normalizedPubkey) {
+      throw new Error('Invalid peer pubkey');
+    }
     this.log('info', 'peer', `Pinging peer ${truncatePubkey(normalizedPubkey)}...`);
 
     try {
@@ -598,7 +803,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       }
 
       const result = iglooResults[0];
-      const resultPubkey = normalizePeerPubkey(result.pubkey);
+      const resultPubkey = normalizePeerPubkey(result.pubkey) ?? normalizedPubkey;
       const status: PeerStatus = result.success ? 'online' : 'offline';
       this.emit('peer:status', resultPubkey, status, result.latency);
 
@@ -669,17 +874,21 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     this.log('info', 'peer', 'Updating peer policies', { count: policies.length });
 
     try {
-      await setNodePolicies(
-        this.node,
-        policies.map((p) => ({
-          pubkey: normalizePeerPubkey(p.pubkey),
+      const normalizedPolicies = policies.map((p) => {
+        const normalizedPubkey = normalizePeerPubkey(p.pubkey);
+        if (!normalizedPubkey) {
+          throw new Error('Invalid peer policy pubkey');
+        }
+        return {
+          pubkey: normalizedPubkey,
           allowSend: p.allowSend,
           allowReceive: p.allowReceive,
           label: p.label,
           note: p.note,
-        })),
-        { merge: true }
-      );
+        };
+      });
+
+      await setNodePolicies(this.node, normalizedPolicies, { merge: true });
 
       this.log('info', 'peer', 'Peer policies updated successfully');
     } catch (error) {
@@ -891,7 +1100,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     // Peer ping events (inbound/outbound)
     // Build known peers set once at registration time for efficient lookup.
     // This prevents unknown pubkeys from being added to the peer store.
-    const knownPeers = new Set(this.getPeers().map(normalizePeerPubkey));
+    const knownPeers = new Set(this.getPeers());
 
     const handlePingRequest = (msg: unknown) => {
       const pubkey = extractPingPubkeyFromMessage(msg);
@@ -934,8 +1143,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
 
     // Node closed
     const handleNodeClosed = () => {
-      this.log('warn', 'system', 'Node connection closed');
-      this.emit('status:changed', 'stopped');
+      void this.handleUnexpectedNodeClosure();
     };
     registerHandler('closed', handleNodeClosed);
 
@@ -1129,26 +1337,32 @@ function truncatePubkey(pubkey: string): string {
   return `${pubkey.slice(0, 8)}...${pubkey.slice(-4)}`;
 }
 
-function normalizePeerPubkey(pubkey: string): string {
-  if (!pubkey) return pubkey;
-  return normalizePubkey(pubkey).toLowerCase();
+function normalizePeerPubkey(pubkey: string | null | undefined): string | null {
+  if (pubkey == null) return null;
+  const trimmed = pubkey.trim();
+  if (!trimmed) return null;
+  return normalizePubkey(trimmed).toLowerCase();
 }
 
 function extractPingPubkeyFromMessage(message: unknown): string | null {
   const pubkey = (message as { env?: { pubkey?: string } } | null)?.env?.pubkey;
-  return pubkey ? normalizePeerPubkey(pubkey) : null;
+  return normalizePeerPubkey(pubkey);
 }
 
 function extractPingPubkeyFromPeerData(data: unknown): string | null {
   const pubkey = (data as { pubkey?: string } | null)?.pubkey;
-  return pubkey ? normalizePeerPubkey(pubkey) : null;
+  return normalizePeerPubkey(pubkey);
 }
 
 function extractPingPubkeyFromError(payload: unknown): string | null {
   if (!Array.isArray(payload)) return null;
   const msg = payload[1] as { env?: { pubkey?: string } } | undefined;
   const pubkey = msg?.env?.pubkey;
-  return pubkey ? normalizePeerPubkey(pubkey) : null;
+  return normalizePeerPubkey(pubkey);
+}
+
+function isNonNullString(value: string | null): value is string {
+  return value !== null;
 }
 
 function formatPubkeyList(

@@ -1,8 +1,14 @@
-# Igloo iOS - Codebase Context
+# Igloo Android - Codebase Context
 
 ## Overview
 
-**Igloo iOS** is a mobile prototype application for [Frostr](https://frostr.org), implementing FROST (Flexible Round-Optimized Schnorr Threshold) threshold signing for the Nostr protocol.
+**Igloo Android** is a mobile prototype application for [Frostr](https://frostr.org), implementing FROST (Flexible Round-Optimized Schnorr Threshold) threshold signing for the Nostr protocol.
+
+This repository is an almost 1:1 clone of the sibling `igloo-ios` project. The key platform difference is background signer keepalive:
+- **iOS** uses soundscape-driven background audio (`BackgroundAudioModule`) to stay alive.
+- **Android** uses a foreground service with a persistent notification while signer mode is active.
+
+See [BACKGROUND_SIGNING_ANDROID.md](../BACKGROUND_SIGNING_ANDROID.md) for Android-specific behavior and [BACKGROUND_AUDIO_IMPLEMENTATION.md](../BACKGROUND_AUDIO_IMPLEMENTATION.md) for iOS-only soundscape behavior.
 
 ### What is Frostr?
 
@@ -19,7 +25,7 @@ This allows k-of-n multi-signature setups while maintaining the user's original 
 ## Project Structure
 
 ```
-igloo-ios/
+igloo-android/
 ├── app/                      # Expo Router - file-based routing
 │   ├── _layout.tsx           # Root layout (credential routing, theme)
 │   ├── (tabs)/               # Tab navigator group
@@ -37,6 +43,11 @@ igloo-ios/
 │   └── +not-found.tsx        # 404 fallback
 │
 ├── services/                 # Core services
+│   ├── audio/                # iOS-only soundscape/background audio integration
+│   │   ├── AudioService.ts
+│   │   └── soundscapes.ts
+│   ├── background/           # Android foreground service keepalive
+│   │   └── AndroidForegroundSignerService.ts
 │   ├── igloo/
 │   │   ├── index.ts          # Barrel export
 │   │   ├── IglooService.ts   # EventEmitter wrapping igloo-core
@@ -88,9 +99,9 @@ igloo-ios/
 ├── scripts/                  # Build/install scripts
 │   └── patch-noble-hashes.js # Postinstall patch for @noble/hashes exports
 │
-├── index.js                  # Custom entry point (crypto polyfill + expo-router)
+├── index.js                  # Custom entry point (loads crypto polyfill + expo-router)
 ├── polyfills/                # Runtime polyfills for React Native
-│   └── crypto.ts             # Crypto polyfill (legacy - now in index.js)
+│   └── crypto.ts             # Crypto polyfill using expo-crypto (required by index.js)
 │
 ├── Configuration Files:
 ├── app.json                  # Expo app configuration
@@ -268,8 +279,8 @@ dark: {
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| iOS | Primary | Full support, tablet enabled |
-| Android | Supported | Edge-to-edge, adaptive icons |
+| iOS | Supported | Soundscape-based background keepalive |
+| Android | Primary | Foreground-service background keepalive, persistent notification |
 | Web | Supported | Static output, Metro bundler |
 
 ---
@@ -284,6 +295,9 @@ The app is a functional FROST threshold signer with:
 - **Relay Configuration** - Add/remove relays, reset to defaults
 - **Event Logging** - Verbose log with level/category filtering
 - **Echo Signal** - Notify group on successful onboarding
+- **Background Signing Keepalive**
+  - iOS: Soundscape audio session
+  - Android: Foreground service (`react-native-background-actions`)
 
 > See `llm/implementation/` for detailed documentation on each feature.
 

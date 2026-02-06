@@ -18,7 +18,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { nip19, getEventHash } from 'nostr-tools';
-import { Card, Badge, Button, IconButton, GradientBackground, HelpTooltip } from '@/components/ui';
+import { Card, Badge, IconButton, GradientBackground, HelpTooltip } from '@/components/ui';
 import { useCopyFeedback } from '@/hooks';
 import { useLogStore, useCredentialStore } from '@/stores';
 import type { LogEntry, LogLevel, LogCategory } from '@/types';
