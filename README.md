@@ -8,6 +8,13 @@ This repo is an almost exact clone of `../igloo-ios`. The key difference is back
 
 See `llm/BACKGROUND_SIGNING_ANDROID.md` for Android details.
 
+## App icon
+
+- Adaptive foreground icon uses the transparent Frostr mark (`assets/images/adaptive-icon.png`).
+- Adaptive background color stays `#041b25` (configured in `app.json` and Android `iconBackground` color).
+- Legacy and round launcher icons use the solid-background Frostr logo (`assets/images/icon.png` and generated `mipmap-*/ic_launcher*.webp`).
+- Do not pre-round or mask source assets; Android launcher applies shape masks.
+
 ## Run it
 
 ```bash
