@@ -4,6 +4,21 @@ import tsparser from '@typescript-eslint/parser';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
+const sharedGlobals = {
+  console: 'readonly',
+  require: 'readonly',
+  module: 'readonly',
+  __dirname: 'readonly',
+  process: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  URL: 'readonly',
+  global: 'readonly',
+  window: 'readonly',
+};
+
 export default [
   js.configs.recommended,
   {
@@ -17,18 +32,7 @@ export default [
           jsx: true,
         },
       },
-      globals: {
-        console: 'readonly',
-        require: 'readonly',
-        module: 'readonly',
-        __dirname: 'readonly',
-        process: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        URL: 'readonly',
-      },
+      globals: sharedGlobals,
     },
     plugins: {
       '@typescript-eslint': tseslint,
@@ -56,20 +60,7 @@ export default [
   {
     files: ['**/*.{js,mjs,cjs}'],
     languageOptions: {
-      globals: {
-        console: 'readonly',
-        require: 'readonly',
-        module: 'readonly',
-        __dirname: 'readonly',
-        process: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        URL: 'readonly',
-        global: 'readonly',
-        window: 'readonly',
-      },
+      globals: sharedGlobals,
     },
   },
   {

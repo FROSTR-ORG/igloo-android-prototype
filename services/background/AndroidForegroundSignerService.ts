@@ -73,6 +73,10 @@ class AndroidForegroundSignerService {
     if (Platform.OS !== 'android' || !backgroundActions) return false;
     return backgroundActions.isRunning();
   }
+
+  isAvailable(): boolean {
+    return Platform.OS === 'android' && backgroundActions !== null;
+  }
 }
 
 export const androidForegroundSignerService = new AndroidForegroundSignerService();

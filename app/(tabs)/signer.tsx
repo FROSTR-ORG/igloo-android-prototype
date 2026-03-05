@@ -183,6 +183,9 @@ export default function SignerTab() {
               {isIOS && isRunning && audioStatus === 'playing' && (
                 <Pressable
                   onPress={handleMuteToggle}
+                  accessibilityRole="button"
+                  accessibilityLabel={volume === 0 ? 'Muted' : 'Soundscape on'}
+                  accessibilityState={{ selected: volume !== 0 }}
                   className={`flex-row items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full active:opacity-70 ${
                     volume === 0 ? 'bg-red-500/20' : 'bg-blue-500/20'
                   }`}

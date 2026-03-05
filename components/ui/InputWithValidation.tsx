@@ -57,7 +57,7 @@ export function InputWithValidation({
               ? 'border-blue-500'
               : 'border-gray-700/50'
           }
-          ${multiline ? 'min-h-[100px] text-top' : ''}
+          ${multiline ? 'min-h-[100px]' : ''}
         `}
         value={value}
         onChangeText={onChangeText}

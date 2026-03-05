@@ -4,9 +4,7 @@
  * This fixes Metro's package exports resolution warning
  */
 const fs = require('fs');
-const path = require('path');
-
-const pkgPath = path.join(__dirname, '..', 'node_modules', '@noble', 'hashes', 'package.json');
+const pkgPath = require.resolve('@noble/hashes/package.json');
 const cryptoJsExport = {
   node: {
     import: './esm/cryptoNode.js',

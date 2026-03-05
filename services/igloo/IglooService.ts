@@ -248,7 +248,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         return;
       }
 
-      if (!this.node) {
+      if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
         await this.stopAndroidForegroundService();
       }
 
@@ -384,6 +384,10 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     return this.cancelledStartAttemptId >= startAttemptId;
   }
 
+  private isCurrentStartAttempt(startAttemptId: number): boolean {
+    return this.currentStartAttemptId === startAttemptId;
+  }
+
   private throwIfStartCancelled(startAttemptId: number, stage: string): void {
     if (this.isStartCancelled(startAttemptId)) {
       throw new StartCancelledError(stage);
@@ -398,7 +402,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     connectedNode: BifrostNode | null
   ): Promise<void> {
     if (!connectedNode) {
-      if (!this.node) {
+      if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
         await this.stopAndroidForegroundService();
       }
       return;
@@ -425,7 +429,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       });
     }
 
-    if (!this.node) {
+    if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
       await this.stopAndroidForegroundService();
     }
   }

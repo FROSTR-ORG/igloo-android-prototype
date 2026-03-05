@@ -46,6 +46,9 @@ target 'Igloo' do
 
   # Prefer podfile_properties, fall back to ENV variable
   use_frameworks_linkage = podfile_properties['ios.useFrameworks'] || ENV['USE_FRAMEWORKS']
+  if use_frameworks_linkage && !%w[static dynamic].include?(use_frameworks_linkage)
+    raise "Invalid ios.useFrameworks linkage '#{use_frameworks_linkage}'. Expected 'static' or 'dynamic'."
+  end
   use_frameworks! :linkage => use_frameworks_linkage.to_sym if use_frameworks_linkage
 
   use_react_native!(
