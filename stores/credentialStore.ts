@@ -60,7 +60,26 @@ export const useCredentialStore = create<CredentialStoreState>()(
           });
         } catch (error) {
           console.error('Failed to clear credentials from secure storage:', error);
-          // Do NOT reset state if clear failed - maintain consistency with secure storage
+          try {
+            await secureStorage.clearCredentials();
+          } catch (retryError) {
+            console.error('Retrying credential clear failed:', retryError);
+          }
+
+          const hasCredentials = await secureStorage.hasCredentials().catch((statusError) => {
+            console.error('Failed to verify credential clear state:', statusError);
+            return true;
+          });
+
+          if (!hasCredentials) {
+            set({
+              hasCredentials: false,
+              shareDetails: null,
+              onboardingComplete: false,
+              echoSent: false,
+            });
+          }
+
           throw error;
         }
       },

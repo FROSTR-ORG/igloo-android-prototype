@@ -4,7 +4,7 @@
  * This fixes Metro's package exports resolution warning
  */
 const fs = require('fs');
-const pkgPath = require.resolve('@noble/hashes/package.json');
+let pkgPath;
 const cryptoJsExport = {
   node: {
     import: './esm/cryptoNode.js',
@@ -48,13 +48,13 @@ function normalizeExports(pkg) {
 }
 
 try {
+  pkgPath = require.resolve('@noble/hashes/package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   pkg.exports = normalizeExports(pkg);
 
   // Validate exports field after normalization
   if (!pkg.exports || typeof pkg.exports !== 'object') {
-    console.warn('[@noble/hashes] Exports field is invalid after normalization, skipping patch');
-    process.exit(0);
+    throw new Error('Exports field is invalid after normalization');
   }
 
   // Check if already patched
@@ -70,6 +70,5 @@ try {
   console.log('[@noble/hashes] Patched successfully - added ./crypto.js export');
 } catch (err) {
   console.error('[@noble/hashes] Patch failed:', err.message);
-  // Don't fail the install
-  process.exit(0);
+  process.exit(1);
 }

@@ -295,6 +295,11 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
    */
   private async startAndroidForegroundService(): Promise<void> {
     if (!ENABLE_ANDROID_FOREGROUND_SERVICE) return;
+    if (!androidForegroundSignerService.isAvailable()) {
+      const errorMessage = 'Android foreground service is unavailable in this build.';
+      this.log('error', 'system', errorMessage);
+      throw new Error(errorMessage);
+    }
 
     try {
       await androidForegroundSignerService.start();
