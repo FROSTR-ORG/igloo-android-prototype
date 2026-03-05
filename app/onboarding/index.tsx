@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui';
 import { router } from 'expo-router';
 import {
-  ArrowRight,
-  Shield,
   Snowflake,
+  Shield,
   Users,
+  Lock,
+  ArrowRight,
   type LucideIcon,
 } from 'lucide-react-native';
 import { Text, View } from 'react-native';
@@ -48,7 +49,7 @@ export default function OnboardingWelcome() {
             description="Respond to signing requests from other key holders in your group"
           />
           <FeatureItem
-            Icon={Shield}
+            Icon={Lock}
             title="Threshold Security"
             description="No single device can sign alone - requires cooperation from peers"
           />

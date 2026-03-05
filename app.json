@@ -2,7 +2,7 @@
   "expo": {
     "name": "Igloo",
     "slug": "igloo-ios",
-    "version": "0.1.0",
+    "version": "1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "igloo",
@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "8",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"

@@ -40,7 +40,7 @@ export function Input({
               ? 'border-blue-500'
               : 'border-gray-700/50'
           }
-          ${multiline ? 'min-h-[100px]' : ''}
+          ${multiline ? 'min-h-[100px] text-top' : ''}
         `}
         placeholderTextColor={Colors.placeholder}
         onFocus={(e) => {

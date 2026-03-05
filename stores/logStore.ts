@@ -50,7 +50,7 @@ function getEntryKey(entry: Pick<LogEntry, 'level' | 'category' | 'message' | 'd
   return `${entry.level}|${entry.category}|${entry.message}|${dataKey}`;
 }
 
-export const useLogStore = create<LogStoreState>()((set, get) => ({
+export const useLogStore = create<LogStoreState>()((set) => ({
   // State (in-memory only - not persisted)
   entries: [],
   maxEntries: DEFAULT_MAX_ENTRIES,

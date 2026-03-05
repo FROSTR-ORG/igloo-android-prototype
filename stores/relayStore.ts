@@ -6,7 +6,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export const useRelayStore = create<RelayStoreState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // State
       relays: [...DEFAULT_RELAYS],
 

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Volume2, VolumeX } from 'lucide-react-native';
-import React, { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   AccessibilityActionEvent,
   GestureResponderEvent,
@@ -19,7 +19,7 @@ interface VolumeControlProps {
 const clamp = (val: number) => Math.max(0, Math.min(1, val));
 
 export function VolumeControl({ value, onValueChange, disabled }: VolumeControlProps) {
-  const [isMuted, setIsMuted] = useState(value === 0);
+  const isMuted = value === 0;
   const previousVolume = useRef(value > 0 ? value : 0.3);
 
   // Track layout for position calculations (measured via onLayout for immediate availability)
@@ -40,12 +40,10 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
       // Unmute - restore previous volume
       const restoreValue = previousVolume.current > 0 ? previousVolume.current : 0.3;
       onValueChange(restoreValue);
-      setIsMuted(false);
     } else {
       // Mute - save current volume and set to 0
       previousVolume.current = value;
       onValueChange(0);
-      setIsMuted(true);
     }
   }, [disabled, isMuted, value, onValueChange]);
 
@@ -69,7 +67,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
         const newValue = clamp(touchX / width);
         onValueChange(newValue);
         if (newValue > 0) {
-          setIsMuted(false);
           previousVolume.current = newValue;
         }
       }
@@ -83,7 +80,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
     const newValue = calculateValueFromTouch(event.nativeEvent.pageX);
     onValueChange(newValue);
     if (newValue > 0) {
-      setIsMuted(false);
       previousVolume.current = newValue;
     }
   }, [disabled, calculateValueFromTouch, onValueChange]);
@@ -122,7 +118,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
 
       onValueChange(newValue);
       if (newValue > 0) {
-        setIsMuted(false);
         previousVolume.current = newValue;
       }
       Haptics.selectionAsync();

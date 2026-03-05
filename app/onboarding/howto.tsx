@@ -1,13 +1,7 @@
 import { Alert, Button } from '@/components/ui';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import {
-    ArrowLeft,
-    ExternalLink,
-    Keyboard,
-    QrCode,
-    Radio,
-} from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Keyboard, QrCode, Radio } from 'lucide-react-native';
 import { Platform, Pressable, Alert as RNAlert, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
