@@ -42,10 +42,9 @@ export function useSigner() {
 
     const isIOS = Platform.OS === 'ios';
 
-    if (isIOS) {
-      // Configure iOS background soundscape before signer startup.
-      await audioService.setSoundscape(storedSoundscape);
-    }
+    // Configure the selected soundscape before signer startup.
+    // On iOS this prepares native background audio; on Android it syncs JS state.
+    await audioService.setSoundscape(storedSoundscape);
 
     await startSigner(credentials.group, credentials.share, relays);
 

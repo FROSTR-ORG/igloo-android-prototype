@@ -1,33 +1,33 @@
 import { audioService } from '@/services/audio';
 import { androidForegroundSignerService } from '@/services/background';
 import type {
-  IglooServiceEvents,
-  LogCategory,
-  LogEntry,
-  LogLevel,
-  PeerPolicy,
-  PeerStatus,
-  PingResult,
-  ShareDetails,
   SigningRequest,
   SigningResult,
   ValidationResult,
+  ShareDetails,
+  PeerStatus,
+  PeerPolicy,
+  PingResult,
+  LogLevel,
+  LogCategory,
+  LogEntry,
+  IglooServiceEvents,
 } from '@/types';
 import type { BifrostNode } from '@frostr/bifrost';
-import type { PingResult as IglooPingResult, NodeEventConfig } from '@frostr/igloo-core';
+import type { NodeEventConfig, PingResult as IglooPingResult } from '@frostr/igloo-core';
 import {
-  cleanupBifrostNode,
   createConnectedNode,
-  decodeGroup,
-  decodeShare,
-  extractPeersFromCredentials,
+  cleanupBifrostNode,
+  validateShare,
+  validateGroup,
   getShareDetailsWithGroup,
-  normalizePubkey,
+  extractPeersFromCredentials,
   pingPeersAdvanced,
   sendEcho,
   setNodePolicies,
-  validateGroup,
-  validateShare,
+  decodeGroup,
+  decodeShare,
+  normalizePubkey,
 } from '@frostr/igloo-core';
 import EventEmitter from 'eventemitter3';
 import { Platform } from 'react-native';
@@ -61,7 +61,11 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
   // Track pending signing requests for correlation with completion events
   private pendingRequests: Map<string, SigningRequest> = new Map();
   // Track registered node event handlers for cleanup
-  private nodeEventHandlers: Array<{ event: string; handler: (...args: unknown[]) => void }> = [];
+  private nodeEventHandlers: Array<{
+    node: BifrostNode;
+    event: string;
+    handler: (...args: unknown[]) => void;
+  }> = [];
   // Promise barrier used by start/stop paths to wait for active teardown completion.
   private teardownPromise: Promise<void> | null = null;
   // Track in-flight start attempts so stop can cancel connecting starts.
@@ -79,6 +83,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     _options: StartSignerOptions = {}
   ): Promise<void> {
     const startAttemptId = this.beginStartAttempt();
+    let connectedNode: BifrostNode | null = null;
 
     try {
       await this.waitForTeardownCompletion('start');
@@ -89,7 +94,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         this.log('warn', 'system', 'Signer already running, restarting (keeping audio)...');
         await this.stopSigner({
           keepAudio: true,
-          keepForegroundService: false,  // Always stop service on restart
+          keepForegroundService: false,
           cancelPendingStart: false,
         });
         this.throwIfStartCancelled(startAttemptId, 'after-restart-stop');
@@ -151,6 +156,7 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
       }
 
       const { node, state } = connection;
+      connectedNode = node;
 
       this.node = node;
       this.groupCredential = groupCredential;
@@ -238,12 +244,11 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
         this.log('info', 'system', 'Signer start cancelled', {
           reason: error instanceof Error ? error.message : String(error),
         });
+        await this.cleanupCancelledStartAttempt(startAttemptId, connectedNode);
         return;
       }
 
-      // Roll back Android foreground service when startup fails before a node is active.
-      // If node teardown already occurred, this is a harmless no-op.
-      if (!this.node) {
+      if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
         await this.stopAndroidForegroundService();
       }
 
@@ -290,6 +295,11 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
    */
   private async startAndroidForegroundService(): Promise<void> {
     if (!ENABLE_ANDROID_FOREGROUND_SERVICE) return;
+    if (!androidForegroundSignerService.isAvailable()) {
+      const errorMessage = 'Android foreground service is unavailable in this build.';
+      this.log('error', 'system', errorMessage);
+      throw new Error(errorMessage);
+    }
 
     try {
       await androidForegroundSignerService.start();
@@ -379,9 +389,53 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
     return this.cancelledStartAttemptId >= startAttemptId;
   }
 
+  private isCurrentStartAttempt(startAttemptId: number): boolean {
+    return this.currentStartAttemptId === startAttemptId;
+  }
+
   private throwIfStartCancelled(startAttemptId: number, stage: string): void {
     if (this.isStartCancelled(startAttemptId)) {
       throw new StartCancelledError(stage);
+    }
+  }
+
+  /**
+   * Tear down resources created by a cancelled start attempt.
+   */
+  private async cleanupCancelledStartAttempt(
+    startAttemptId: number,
+    connectedNode: BifrostNode | null
+  ): Promise<void> {
+    if (!connectedNode) {
+      if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
+        await this.stopAndroidForegroundService();
+      }
+      return;
+    }
+
+    if (this.node === connectedNode) {
+      await this.teardownSigner({
+        keepAudio: false,
+        keepForegroundService: false,
+        reason: `start-cancelled-${startAttemptId}`,
+      });
+      return;
+    }
+
+    // Concurrent starts may already have swapped in a newer node.
+    // Clean up the cancelled attempt's node directly without touching active runtime state.
+    this.cleanupNodeEventListeners(connectedNode);
+    try {
+      cleanupBifrostNode(connectedNode);
+    } catch (error) {
+      this.log('warn', 'system', 'Failed to clean up cancelled start node', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        startAttemptId,
+      });
+    }
+
+    if (!this.node && this.isCurrentStartAttempt(startAttemptId)) {
+      await this.stopAndroidForegroundService();
     }
   }
 
@@ -902,38 +956,44 @@ class IglooService extends EventEmitter<IglooServiceEvents> {
   /**
    * Clean up previously registered node event listeners.
    */
-  private cleanupNodeEventListeners(): void {
-    if (!this.node || this.nodeEventHandlers.length === 0) return;
+  private cleanupNodeEventListeners(targetNode: BifrostNode | null = this.node): void {
+    if (!targetNode || this.nodeEventHandlers.length === 0) return;
 
-    const node = this.node as unknown as {
+    const node = targetNode as unknown as {
       off: (event: string, handler: (...args: unknown[]) => void) => void;
     };
 
-    for (const { event, handler } of this.nodeEventHandlers) {
+    const remainingHandlers: typeof this.nodeEventHandlers = [];
+    for (const { node: handlerNode, event, handler } of this.nodeEventHandlers) {
+      if (handlerNode !== targetNode) {
+        remainingHandlers.push({ node: handlerNode, event, handler });
+        continue;
+      }
       node.off(event, handler);
     }
-    this.nodeEventHandlers = [];
+    this.nodeEventHandlers = remainingHandlers;
   }
 
   /**
    * Set up event listeners on the BifrostNode.
    */
   private setupNodeEventListeners(): void {
-    if (!this.node) return;
+    const nodeRef = this.node;
+    if (!nodeRef) return;
 
     // Clean up any existing handlers first to prevent duplicates
-    this.cleanupNodeEventListeners();
+    this.cleanupNodeEventListeners(nodeRef);
 
     // Cast node to any for event registration since BifrostNode types
     // don't include all the internal event names
-    const node = this.node as unknown as {
+    const node = nodeRef as unknown as {
       on: (event: string, handler: (...args: unknown[]) => void) => void;
     };
 
     // Helper to register and track handlers
     const registerHandler = (event: string, handler: (...args: unknown[]) => void) => {
       node.on(event, handler);
-      this.nodeEventHandlers.push({ event, handler });
+      this.nodeEventHandlers.push({ node: nodeRef, event, handler });
     };
 
     // Signing request received

@@ -1,13 +1,8 @@
 import { Alert, Button } from '@/components/ui';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import {
-    ArrowLeft,
-    ExternalLink,
-    Keyboard,
-    QrCode,
-    Radio,
-} from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Keyboard, QrCode, Radio } from 'lucide-react-native';
+import { androidForegroundSignerService } from '@/services/background';
 import { Platform, Pressable, Alert as RNAlert, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -28,6 +23,7 @@ const EXTERNAL_LINKS = [
 
 export default function OnboardingHowto() {
   const isAndroid = Platform.OS === 'android';
+  const foregroundSignerEnabled = isAndroid && androidForegroundSignerService.isAvailable();
 
   /**
    * Opens a URL in the default browser or app handler.
@@ -96,7 +92,7 @@ export default function OnboardingHowto() {
         {/* Beta notice */}
         <Alert variant="info" title="Currently in Beta" className="mb-4">
           <Text className="text-sm text-blue-300 leading-5">
-            {isAndroid
+            {foregroundSignerEnabled
               ? 'On Android, Igloo keeps signing active using a foreground service with a persistent notification while signer mode is on.'
               : 'This app runs as a background signer that responds to signing requests from other nodes in your quorum.'}{' '}
             It cannot initiate signatures yet - only respond when your peers request a signature.

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Volume2, VolumeX } from 'lucide-react-native';
-import React, { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   AccessibilityActionEvent,
   GestureResponderEvent,
@@ -19,7 +19,7 @@ interface VolumeControlProps {
 const clamp = (val: number) => Math.max(0, Math.min(1, val));
 
 export function VolumeControl({ value, onValueChange, disabled }: VolumeControlProps) {
-  const [isMuted, setIsMuted] = useState(value === 0);
+  const isMuted = value === 0;
   const previousVolume = useRef(value > 0 ? value : 0.3);
 
   // Track layout for position calculations (measured via onLayout for immediate availability)
@@ -36,16 +36,14 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
     if (disabled) return;
     await Haptics.selectionAsync();
 
-    if (isMuted || value === 0) {
+    if (isMuted) {
       // Unmute - restore previous volume
       const restoreValue = previousVolume.current > 0 ? previousVolume.current : 0.3;
       onValueChange(restoreValue);
-      setIsMuted(false);
     } else {
       // Mute - save current volume and set to 0
       previousVolume.current = value;
       onValueChange(0);
-      setIsMuted(true);
     }
   }, [disabled, isMuted, value, onValueChange]);
 
@@ -69,7 +67,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
         const newValue = clamp(touchX / width);
         onValueChange(newValue);
         if (newValue > 0) {
-          setIsMuted(false);
           previousVolume.current = newValue;
         }
       }
@@ -83,7 +80,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
     const newValue = calculateValueFromTouch(event.nativeEvent.pageX);
     onValueChange(newValue);
     if (newValue > 0) {
-      setIsMuted(false);
       previousVolume.current = newValue;
     }
   }, [disabled, calculateValueFromTouch, onValueChange]);
@@ -122,7 +118,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
 
       onValueChange(newValue);
       if (newValue > 0) {
-        setIsMuted(false);
         previousVolume.current = newValue;
       }
       Haptics.selectionAsync();
@@ -130,7 +125,6 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
     [disabled, value, onValueChange],
   );
 
-  const isEffectivelyMuted = value === 0;
   const percentage = Math.round(clamp(value) * 100);
 
   return (
@@ -138,7 +132,7 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
       <View className="flex-row justify-between mb-3">
         <Text className="text-sm text-gray-400">Volume</Text>
         <Text className="text-sm text-gray-100">
-          {isEffectivelyMuted ? 'Muted' : `${percentage}%`}
+          {isMuted ? 'Muted' : `${percentage}%`}
         </Text>
       </View>
 
@@ -148,17 +142,17 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
           onPress={handleMuteToggle}
           disabled={disabled}
           accessibilityRole="button"
-          accessibilityLabel={isEffectivelyMuted ? 'Unmute' : 'Mute'}
+          accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}
           accessibilityValue={{ text: `${percentage}%` }}
           className={`p-2 rounded-lg ${
             disabled
               ? 'bg-gray-800/50'
-              : isEffectivelyMuted
+              : isMuted
                 ? 'bg-red-600/20 active:bg-red-600/30'
                 : 'bg-gray-700 active:bg-gray-600'
           }`}
         >
-          {isEffectivelyMuted ? (
+          {isMuted ? (
             <VolumeX size={20} color={disabled ? '#6b7280' : '#ef4444'} />
           ) : (
             <Volume2 size={20} color={disabled ? '#6b7280' : '#9ca3af'} />
@@ -184,7 +178,7 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
             {/* Filled Track */}
             <View
               className={`h-full rounded-full ${
-                disabled ? 'bg-gray-600' : isEffectivelyMuted ? 'bg-gray-600' : 'bg-blue-500'
+                disabled ? 'bg-gray-600' : isMuted ? 'bg-gray-600' : 'bg-blue-500'
               }`}
               style={{ width: `${percentage}%` }}
             />
@@ -194,7 +188,7 @@ export function VolumeControl({ value, onValueChange, disabled }: VolumeControlP
               className={`absolute w-5 h-5 rounded-full -top-1.5 ${
                 disabled
                   ? 'bg-gray-500'
-                  : isEffectivelyMuted
+                  : isMuted
                     ? 'bg-gray-400'
                     : 'bg-white'
               }`}

@@ -51,17 +51,36 @@ export const useCredentialStore = create<CredentialStoreState>()(
       clearCredentials: async () => {
         try {
           await secureStorage.clearCredentials();
-        } catch (error) {
-          console.error('Failed to clear credentials from secure storage:', error);
-          throw error;
-        } finally {
-          // Always reset in-memory/persisted metadata even if secure clear fails.
+          // Only reset state if secure storage clear succeeded
           set({
             hasCredentials: false,
             shareDetails: null,
             onboardingComplete: false,
             echoSent: false,
           });
+        } catch (error) {
+          console.error('Failed to clear credentials from secure storage:', error);
+          try {
+            await secureStorage.clearCredentials();
+          } catch (retryError) {
+            console.error('Retrying credential clear failed:', retryError);
+          }
+
+          const hasCredentials = await secureStorage.hasCredentials().catch((statusError) => {
+            console.error('Failed to verify credential clear state:', statusError);
+            return true;
+          });
+
+          if (!hasCredentials) {
+            set({
+              hasCredentials: false,
+              shareDetails: null,
+              onboardingComplete: false,
+              echoSent: false,
+            });
+          }
+
+          throw error;
         }
       },
     }),
